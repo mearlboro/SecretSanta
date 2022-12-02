@@ -15,15 +15,16 @@ use Encode qw(encode);
 
 use MIME::Lite;
 
-my ($verb, $file, $couples);
+my ($dryrun, $verb, $file, $couples);
 
 GetOptions(
     'v|verbose'   => \$verb,
     'p|people=s'  => \$file,
     'c|couples=s' => \$couples,
-) or die "Usage: $0 -p|--people FILENAME [-c|--couples FILENAME -v|--verbose]";
+    'n|dryrun'   => \$dryrun
+) or die "Usage: $0 -p|--people FILENAME [-c|--couples FILENAME -v|--verbose -n|--dryrun]";
 
-defined $file or die "Usage: $0 -p|--people FILENAME [-c|--couples FILENAME -v|--verbose]";
+defined $file or die "Usage: $0 -p|--people FILENAME [-c|--couples FILENAME -v|--verbose -n|--dryrun]";
 
 
 open INFILE, "<", $file;
@@ -44,6 +45,13 @@ while (<INFILE>) {
 
 close INFILE;
 
+if ($verb) {
+    print "Processed contacts:\n";
+    foreach my $name (keys %contacts) {
+        print("\t$name\t$contacts{$name}\n")
+    }
+}
+
 if (defined $couples) {
     open INFILE, "<", $couples;
 
@@ -57,7 +65,7 @@ if (defined $couples) {
         $name1 ~~ @bag and $name2 ~~ @bag or die "Malformed file $couples, all names need to be in $file\n";
 
 	$dont_match{$name1} = $name2;
-	$dont_match{$name2} = $name1; 
+	$dont_match{$name2} = $name1;
     }
 
 }
@@ -69,6 +77,9 @@ if ($verb) {
     }
 }
 
+print "Creating pairings for presents.... if it takes too long, Ctrl+C and start over\n";
+print "Trial run, not sending emails\n" if ($dryrun);
+
 my %draw;
 
 TRY: while () {
@@ -76,9 +87,9 @@ TRY: while () {
         @bag = shuffle @bag;
 
         my $pick = shift @bag;
-        
+
 	# a person can't pick themselves or their partner
-	while ( ($pick eq $name) or 
+	while ( ($pick eq $name) or
 		(defined $dont_match{$name} and $pick eq $dont_match{$name}) ) {
             # last person, try again
             if (@bag == 0) {
@@ -101,28 +112,33 @@ if ($verb) {
     }
 }
 
-print "Done pairing, sending emails....";
+print "Done pairing, sending emails....\n";
 
 foreach my $from (keys %draw) {
 
-    my $to = $draw{$from};
-
-    my $body = email_body($from, $to);
-
     if ($verb) {
-        print "Emailed $contacts{$from} about their present for $to\n";
+        print "Emailed $contacts{$from} about their present for $draw{$from}\n";
     }
-    
-    my $msg = MIME::Lite->new(
-        From     => 'santa@northpole.com',
-        To       => $contacts{$from},
-        Subject  => 'Secret Santa',
-        Data     => encode('UTF-8', $body),
-        Type     => 'text/plain; charset=UTF-8',
-        Encoding => '8bit',
-    );
+}
 
-    $msg->send;
+if (!$dryrun) {
+    foreach my $from (keys %draw) {
+
+        my $to = $draw{$from};
+
+        my $body = email_body($from, $to);
+
+        my $msg = MIME::Lite->new(
+            From     => 'santa@northpole.com',
+            To       => $contacts{$from},
+            Subject  => 'Secret Santa',
+            Data     => encode('UTF-8', $body),
+            Type     => 'text/plain; charset=UTF-8',
+            Encoding => '8bit',
+        );
+
+        $msg->send;
+    }
 }
 
 exit;
