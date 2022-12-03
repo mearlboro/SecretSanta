@@ -7,21 +7,21 @@ use Getopt::Long qw(GetOptions);
 Getopt::Long::Configure qw(gnu_getopt);
 
 use List::Util qw(shuffle);
-
-use Email::Valid;
-
-use utf8::all;
 use Encode qw(encode);
-
-use MIME::Lite;
+use Email::Stuffer;
+use Email::Valid;
+use Email::Sender::Transport::SMTP ();
 
 my ($dryrun, $verb, $file, $couples);
+
+my ($smtphost, $smtpport) = ('smtp.gmail.com', 587);
+my ($smtpuser, $smtppass) = ('yourgmail', 'yourpassword');
 
 GetOptions(
     'v|verbose'   => \$verb,
     'p|people=s'  => \$file,
     'c|couples=s' => \$couples,
-    'n|dryrun'   => \$dryrun
+    'n|dryrun'    => \$dryrun
 ) or die "Usage: $0 -p|--people FILENAME [-c|--couples FILENAME -v|--verbose -n|--dryrun]";
 
 defined $file or die "Usage: $0 -p|--people FILENAME [-c|--couples FILENAME -v|--verbose -n|--dryrun]";
@@ -122,22 +122,24 @@ foreach my $from (keys %draw) {
 }
 
 if (!$dryrun) {
+    my $transport = Email::Sender::Transport::SMTP->new({
+        host          => $smtphost,
+        port          => $smtpport,
+        ssl           => 'starttls',
+        sasl_username => $smtpuser,
+        sasl_password => $smtppass
+    });
+
     foreach my $from (keys %draw) {
-
         my $to = $draw{$from};
-
         my $body = email_body($from, $to);
 
-        my $msg = MIME::Lite->new(
-            From     => 'santa@northpole.com',
-            To       => $contacts{$from},
-            Subject  => 'Secret Santa',
-            Data     => encode('UTF-8', $body),
-            Type     => 'text/plain; charset=UTF-8',
-            Encoding => '8bit',
-        );
-
-        $msg->send;
+        Email::Stuffer->from     ('santa@northpole.org')
+                      ->to       ($contacts{$from})
+                      ->subject  ('Secret Santa')
+                      ->text_body(encode('UTF-8', $body))
+                      ->transport('SMTP', { host => 'localhost' }) #$transport)
+                      ->send;
     }
 }
 
@@ -169,7 +171,7 @@ secret_santa
 
 =head1 SYNOPSIS
 
-./secret_santa -p|--people [-c|--couples -v|--verbose]
+./secret_santa -p|--people [-c|--couples -v|--verbose -n|--dryrun]
 
 =head1 DESCRIPTION
 
@@ -179,10 +181,6 @@ Generates Secret Santa pairs and sends emails to people in the list
 
 =over
 
-=item -v, --verbose
-
-Print out the pairs to the console
-
 =item -p, --people
 
 A file containing the list of people to participate, name and email separated by a space, one per line
@@ -190,6 +188,14 @@ A file containing the list of people to participate, name and email separated by
 =item -c, --couples
 
 A file containing the list of couples that should not be matched, two names separated by a space, one per line
+
+=item -v, --verbose
+
+Print out the pairs and the progress of the script to the console
+
+=item -n, --dryrun
+
+Run the script without sending emals, to test it works.
 
 =back
 
