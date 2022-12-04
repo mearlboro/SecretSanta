@@ -138,7 +138,7 @@ if (!$dryrun) {
                       ->to       ($contacts{$from})
                       ->subject  ('Secret Santa')
                       ->text_body(encode('UTF-8', $body))
-                      ->transport('SMTP', { host => 'localhost' }) #$transport)
+                      ->transport($transport)
                       ->send;
     }
 }
